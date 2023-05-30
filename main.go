@@ -1,36 +1,35 @@
 package main
 
 import (
+	"image"
 	"math"
-	"math/rand"
+	"os"
 	"time"
 
+	_ "image/png"
+
 	"github.com/faiface/pixel"
-	"github.com/faiface/pixel/imdraw"
 	"github.com/faiface/pixel/pixelgl"
 	"golang.org/x/image/colornames"
 )
 
-const (
-	width  = 800
-	height = 600
-)
-
-type point struct {
-	x, y float64
-}
-
-type snake struct {
-	body        []point
-	dir         point
-	boostSpeed  float64
-	boostActive bool
+func loadPicture(path string) (pixel.Picture, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	img, _, err := image.Decode(file)
+	if err != nil {
+		return nil, err
+	}
+	return pixel.PictureDataFromImage(img), nil
 }
 
 func run() {
 	cfg := pixelgl.WindowConfig{
-		Title:  "Snake",
-		Bounds: pixel.R(0, 0, width, height),
+		Title:  "Coom.io",
+		Bounds: pixel.R(0, 0, 1024, 768),
 		VSync:  true,
 	}
 	win, err := pixelgl.NewWindow(cfg)
@@ -38,107 +37,55 @@ func run() {
 		panic(err)
 	}
 
-	snake := snake{
-		body:       []point{{width / 2, height / 2}},
-		dir:        point{10, 0},
-		boostSpeed: 1.0,
+	win.SetSmooth(true)
+
+	pic, err := loadPicture("arrow.png")
+	if err != nil {
+		panic(err)
 	}
-	food := point{rand.Float64() * width, rand.Float64() * height}
 
+	sprite := pixel.NewSprite(pic, pic.Bounds())
+
+	var (
+		camPos   = pixel.ZV
+		camSpeed = 500.0
+	)
+
+	last := time.Now()
 	for !win.Closed() {
-		win.Clear(colornames.Black)
-		drawBorder(win, width, height)
+		dt := time.Since(last).Seconds()
+		last = time.Now()
 
-		// Handle input
-		if win.Pressed(pixelgl.KeyW) || win.Pressed(pixelgl.KeyUp) {
-			snake.dir = point{0, 10}
-		}
-		if win.Pressed(pixelgl.KeyS) || win.Pressed(pixelgl.KeyDown) {
-			snake.dir = point{0, -10}
-		}
-		if win.Pressed(pixelgl.KeyA) || win.Pressed(pixelgl.KeyLeft) {
-			snake.dir = point{-10, 0}
-		}
-		if win.Pressed(pixelgl.KeyD) || win.Pressed(pixelgl.KeyRight) {
-			snake.dir = point{10, 0}
-		}
-		if win.Pressed(pixelgl.KeySpace) {
-			if !snake.boostActive {
-				snake.boostActive = true
-				snake.boostSpeed = 2.0
-			} else {
-				snake.boostActive = false
-				snake.boostSpeed = 1.0
-			}
-		}
+		win.Clear(colornames.Seashell)
 
-		// Move snake
-		head := snake.body[len(snake.body)-1]
-		newHead := point{head.x + snake.dir.x*snake.boostSpeed, head.y + snake.dir.y*snake.boostSpeed}
-		if newHead.x < 0 || newHead.x >= width || newHead.y < 0 || newHead.y >= height {
-			break
+		mat := pixel.IM
+		cam := mat.Moved(win.Bounds().Center().Sub(camPos))
+		win.SetMatrix(cam)
+		mat = mat.Moved(win.Bounds().Center())
+
+		// TODO Handle logic for key presses
+		if win.Pressed(pixelgl.KeyUp) || win.Pressed(pixelgl.KeyW) {
+			camPos.Y -= camSpeed * dt
+			mat = mat.Rotated(win.Bounds().Center(), 0)
 		}
-		for _, p := range snake.body {
-			if p == newHead {
-				break
-			}
+		if win.Pressed(pixelgl.KeyDown) || win.Pressed(pixelgl.KeyS) {
+			camPos.Y += camSpeed * dt
+			mat = mat.Rotated(win.Bounds().Center(), math.Pi)
+		}
+		if win.Pressed(pixelgl.KeyLeft) || win.Pressed(pixelgl.KeyD) {
+			camPos.X += camSpeed * dt
+			mat = mat.Rotated(win.Bounds().Center(), math.Pi/2)
+		}
+		if win.Pressed(pixelgl.KeyRight) || win.Pressed(pixelgl.KeyA) {
+			camPos.X -= camSpeed * dt
+			mat = mat.Rotated(win.Bounds().Center(), (math.Pi*3)/2)
 		}
 
-		// Draw snake
-		for _, p := range snake.body {
-			imd := imdraw.New(nil)
-			imd.Color = colornames.Green
-			imd.Push(pixel.V(p.x, p.y))
-			imd.Circle(10, 0)
-			imd.Draw(win)
-		}
-
-		// Draw food
-		imd := imdraw.New(nil)
-		imd.Color = colornames.Red
-		imd.Push(pixel.V(food.x, food.y))
-
-		imd.Circle(10, 0)
-		imd.Draw(win)
-
-		// Check if the snake eats the food
-		if pointsCloseEnough(newHead, food, 10) {
-			food = point{rand.Float64() * width, rand.Float64() * height}
-			snake.body = append(snake.body, newHead)
-		} else {
-			snake.body = append(snake.body[1:], newHead)
-		}
-
+		sprite.Draw(win, mat)
 		win.Update()
-
-		time.Sleep(100 * time.Millisecond)
 	}
 }
 
 func main() {
 	pixelgl.Run(run)
-}
-
-func pointsCloseEnough(a, b point, tolerance float64) bool {
-	return math.Abs(a.x-b.x) < tolerance && math.Abs(a.y-b.y) < tolerance
-}
-
-func drawBorder(win *pixelgl.Window, width, height float64) {
-	imd := imdraw.New(nil)
-	imd.Color = colornames.White
-
-	// Draw the top border
-	imd.Push(pixel.V(0, height), pixel.V(width, height))
-
-	// Draw the bottom border
-	imd.Push(pixel.V(0, 0), pixel.V(width, 0))
-
-	// Draw the left border
-	imd.Push(pixel.V(0, 0), pixel.V(0, height))
-
-	// Draw the right border
-	imd.Push(pixel.V(width, 0), pixel.V(width, height))
-
-	imd.Line(1)
-	imd.Draw(win)
 }
