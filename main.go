@@ -132,6 +132,7 @@ func gameloop(win *pixelgl.Window, sprite pixel.Picture, cfg pixelgl.WindowConfi
 
 		camZoom *= math.Pow(camZoomSpeed, win.MouseScroll().Y)
 
+		drawGrid(win, grid)
 		drawRedTrail(win, trail)
 		win.Update()
 	}
